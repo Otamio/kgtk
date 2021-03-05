@@ -1,5 +1,5 @@
 """
-Generate graph embedding based on Pytorch BigGraph library  
+Generate graph embedding based on Pytorch BigGraph library
 
 """
 
@@ -13,6 +13,7 @@ import attr,sys,typing
 from kgtk.kgtkformat import KgtkFormat
 from pathlib import Path
 import sys
+import pdb
 
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True' # remove the Issue: Initializing libiomp5.dylib, but found libiomp5.dylib already initialized.
@@ -40,9 +41,9 @@ class KgtkCreateTmpTsv(KgtkFormat):
                                           options=self.reader_options,
                                           value_options = self.value_options,
                                           verbose=self.verbose,
-                                          very_verbose=self.very_verbose,                          
+                                          very_verbose=self.very_verbose,
         )
-        
+
         if self.verbose:
             print("Opening the output file: %s" % str(self.output_file_path), file=self.error_file, flush=True)
 
@@ -67,7 +68,7 @@ class KgtkCreateTmpTsv(KgtkFormat):
         node2_index = kr.get_node2_column_index()
         ##relation_index = kr.get_id_column_index('relation')#
         relation_index = kr.get_label_column_index()
-      
+
         row: typing.List[str]
         # delete header
         # kw.file_out.seek(0)         # set the cursor to the top of the file
@@ -76,14 +77,14 @@ class KgtkCreateTmpTsv(KgtkFormat):
 
         for row in kr:
             input_line_count += 1
-            kw.write([row[node1_index],row[relation_index],row[node2_index]]) 
-           
+            kw.write([row[node1_index],row[relation_index],row[node2_index]])
+
         if self.verbose:
             print("Processed %d records." % (input_line_count), file=self.error_file, flush=True)
-    
+
         kw.close()
 
-def get_config(**kwargs): 
+def get_config(**kwargs):
     """
     configurations for graph embedding
     """
@@ -92,9 +93,12 @@ def get_config(**kwargs):
 
     output_folder = kwargs['temporary_directory'] / 'output'
     entity_path = str(output_folder)
-    edge_paths = [ str((output_folder / 'edges_partitioned')) ]
+    if str(kwargs['test_file_path']) != '-':
+        edge_paths = [ str((output_folder / 'edges_partitioned')), str((output_folder / 'test_edges')) ]
+    else:
+        edge_paths = [ str((output_folder / 'edges_partitioned')) ]
     checkpoint_path = str((output_folder / 'model'))
-       
+
     config = dict(
         # I/O data
         entity_path = entity_path,
@@ -122,7 +126,7 @@ def get_config(**kwargs):
         loss_fn=kwargs['loss_fn'],
         lr=kwargs['learning_rate'],
         # Evaluation during training
-        eval_fraction=kwargs['eval_fraction'],  # to reproduce results, we need to use all training data 
+        eval_fraction=kwargs['eval_fraction'],  # to reproduce results, we need to use all training data
     )
 
     return config
@@ -144,11 +148,14 @@ def add_arguments(parser: KGTKArgumentParser):
     from kgtk.io.kgtkreader import KgtkReader, KgtkReaderOptions
     from kgtk.value.kgtkvalueoptions import KgtkValueOptions
 
-    ### IO 
+    ### IO
     parser.add_argument(      "-i", "--input-file", dest="input_file_path",
                               help="The KGTK input file. (default=%(default)s)", type=Path, default="-")
     parser.add_argument(      "-o", "--output-file", dest="output_file_path",
                               help="The KGTK output file. (default=%(default)s).", type=Path, default="-")
+    parser.add_argument(      '-tf', "--test-file", dest='test_file_path',
+                              help='The KGTK test file. If this argument is supplied, then the input file will be treated' +
+                              'as the training set', type=Path, default='-')
     parser.add_argument(     '-l',"--log", dest="log_file_path",
                               help="Setting the log path [Default: None]",
                               type=Path,default=None, metavar="")
@@ -183,7 +190,7 @@ def add_arguments(parser: KGTKArgumentParser):
                              default='ComplEx',metavar='RESCAL|DistMult|ComplEx|TransE')
     parser.add_argument(     '-e','--num_epochs', dest='num_epochs',
                              help="The number of times the training loop iterates over all the edges.[Default:100]",
-                             type=int,default=100, metavar='')    
+                             type=int,default=100, metavar='')
     parser.add_argument(      '-b','--bias', dest='bias',
                              help="Whether use the bias choice [Default: False],If enabled, withhold the first "+
                              "dimension of the embeddings from the comparator and instead use it as a bias, adding "+
@@ -209,9 +216,9 @@ def add_arguments(parser: KGTKArgumentParser):
                             "metrics during training. [Defalut:0.0 training all edges ]",
                              type=float,default=0.0,metavar='')
     parser.add_argument(     '-dr','--dynamic_relaitons', dest='dynamic_relaitons',
-                             help="Whether use dynamic relations (when graphs with a "+ 
+                             help="Whether use dynamic relations (when graphs with a "+
 	                         "large number of relations) [Default: True]",
-                             type=bool, default=True, metavar='True|False')             
+                             type=bool, default=True, metavar='True|False')
     parser.add_argument(     '-ge','--global_emb', dest='global_emb',
                              help="Whether use global embedding, if enabled, add to each embedding a vector that is common "
                              "to all the entities of a certain type. This vector is learned during training.[Default: False] ",
@@ -230,8 +237,8 @@ def config_preprocess(raw_config):
     operator:complex_diagonal
     '''
 
-    algorithm_operator = {"complex":"complex_diagonal", 
-                          "distmult": "diagonal", 
+    algorithm_operator = {"complex":"complex_diagonal",
+                          "distmult": "diagonal",
                           "rescal":"linear",
                           "transe":"translation"}
     try:
@@ -245,7 +252,7 @@ def config_preprocess(raw_config):
     loss_fn = raw_config['loss_fn']
     learning_rate = raw_config['lr']
     if algorithm and loss_fn and learning_rate:
-        return 
+        return
 
     if  not algorithm:  # use doesn't enter anything
         raw_config['relations'][0]['operator'] = 'complex_diagonal'
@@ -253,7 +260,7 @@ def config_preprocess(raw_config):
             raw_config['loss_fn'] = 'logistic'
         if not learning_rate:
             raw_config['lr'] = 0.1
-    if algorithm: # give the algorithm 
+    if algorithm: # give the algorithm
         if algorithm == 'complex_diagonal': # ComplEx
             if not loss_fn:
                 raw_config['loss_fn'] = 'logistic'
@@ -302,15 +309,15 @@ def generate_kgtk_output(entities_output,output_kgtk_file,verbose,very_verbose):
     kw.file_out.seek(0)         # set the cursor to the top of the file
     kw.file_out.truncate()      # truncate following part == delete first line
 
-    MODULE_NAME = 'graph_embeddings' # __name__.split('.')[-1] 
+    MODULE_NAME = 'graph_embeddings' # __name__.split('.')[-1]
     with open(entities_output) as wv_file:
         for line in wv_file:
             line = line.replace('\n','')   #remove  \n
             entity_name = line.split('\t')[0]
             entity_vev = ','.join(line.split('\t')[1:])
             input_line_count += 1
-            kw.write([entity_name,MODULE_NAME,entity_vev]) 
-             
+            kw.write([entity_name,MODULE_NAME,entity_vev])
+
     if verbose:
         logging.info("Processed %d records." % (input_line_count), file=self.error_file, flush=True)
 
@@ -345,7 +352,7 @@ def run(verbose: bool = False,
     import json,os,h5py,gzip,torch,shutil
     from torchbiggraph.config import parse_config
     # copy  missing file under kgtk/graph_embeddings
-    from kgtk.graph_embeddings.importers import TSVEdgelistReader,convert_input_data  
+    from kgtk.graph_embeddings.importers import TSVEdgelistReader,convert_input_data
     from torchbiggraph.train import train
     from torchbiggraph.util import SubprocessInitializer, setup_logging
     from kgtk.graph_embeddings.export_to_tsv import make_tsv
@@ -353,7 +360,7 @@ def run(verbose: bool = False,
 
     try:
         # store the data into log file, then the console will not output anything
-        if kwargs['log_file_path'] != None: 
+        if kwargs['log_file_path'] != None:
             log_file_path = kwargs['log_file_path']
             logging.basicConfig(format='%(asctime)s - %(filename)s[line:%(lineno)d] \
             - %(levelname)s: %(message)s',
@@ -362,9 +369,14 @@ def run(verbose: bool = False,
                     filemode='w')
             print(f'In Processing, Please go to {kwargs["log_file_path"]} to check details')
 
+        # pdb.set_trace()
         input_kgtk_file: Path = kwargs['input_file_path']
         tmp_folder = kwargs['temporary_directory']
         tmp_tsv_path:Path = tmp_folder / f'tmp_{input_kgtk_file.name}'
+        if str(kwargs['test_file_path']) != '-':
+            test_kgtk_file: Path = kwargs['test_file_path']
+            test_tsv_path:Path = tmp_folder / f'tmp_{test_kgtk_file.name}'
+
         # tmp_tsv_path:Path = input_kgtk_file.parent/f'tmp_{input_kgtk_file.name}'
 
         #  make sure the tmp folder exists, otherwise it will raise an exception
@@ -373,7 +385,7 @@ def run(verbose: bool = False,
 
         output_kgtk_file = kwargs['output_file_path']
         try:   #if output_kgtk_file is not empty, delete it
-            output_kgtk_file.unlink() 
+            output_kgtk_file.unlink()
         except: pass # didn't find, then let it go
 
         # *********************************************
@@ -393,20 +405,34 @@ def run(verbose: bool = False,
         )
         # prepare the graph file
         # create a tmp tsv file for PBG embedding
-        
+
         logging.info('Generate the valid tsv format for embedding ...')
         kct.process()
         logging.info('Embedding file is ready...')
-        
+
+        # Prepare the test graph
+        if str(kwargs['test_file_path']) != '-':
+            kct: KgtkCopyTemplate = KgtkCreateTmpTsv(
+                input_file_path=test_kgtk_file,
+                output_file_path=test_tsv_path,
+                reader_options=reader_options,
+                value_options=value_options,
+                error_file=error_file,
+                verbose=verbose,
+                very_verbose=very_verbose,
+            )
+            kct.process()
+
+        # pdb.set_trace()
         # *********************************************
-        # 1. DEFINE CONFIG  
+        # 1. DEFINE CONFIG
         # *********************************************
         raw_config = get_config(**kwargs)
 
         ## setting corresponding learning rate and loss function for different algorthim
         processed_config = config_preprocess(raw_config)
-        
-        # temporry output folder 
+
+        # temporry output folder
         tmp_output_folder = Path(processed_config['entity_path'])
 
         # before moving, need to check whether the tmp folder is not empty in case of bug
@@ -420,7 +446,10 @@ def run(verbose: bool = False,
         setup_logging()
         config = parse_config(processed_config)
         subprocess_init = SubprocessInitializer()
-        input_edge_paths = [tmp_tsv_path] 
+        if str(kwargs['test_file_path']) != '-':
+            input_edge_paths = [tmp_tsv_path, test_tsv_path]
+        else:
+            input_edge_paths = [tmp_tsv_path]
 
         convert_input_data(
             config.entities,
@@ -435,7 +464,27 @@ def run(verbose: bool = False,
         # ************************************************
         # 3. TRAIN THE EMBEDDINGS
         #*************************************************
-        train(config, subprocess_init=subprocess_init)
+        try:
+            import attr
+            edges = config.edge_paths
+            train_config = attr.evolve(config, edge_paths=[edges[0]])
+            train(train_config, subprocess_init=subprocess_init)
+        except Exception as e:
+            print(e)
+
+        try:
+            from torchbiggraph.eval import do_eval
+
+            if str(kwargs['test_file_path']) != '-':
+                relations = [attr.evolve(r, all_negs=True) for r in config.relations]
+                test_config = attr.evolve(
+                        config, edge_paths=[edges[1]], relations=relations, num_uniform_negs=0
+                        )
+                logging.info('Evaluate test results...')
+                do_eval(test_config)
+
+        except Exception as e:
+            print(e)
 
         # ************************************************
         # 4. GENERATE THE OUTPUT
@@ -450,23 +499,23 @@ def run(verbose: bool = False,
             make_tsv(config, entities_tf, relation_types_tf)
 
         # output  correct format for embeddings
-        if kwargs['output_format'] == 'glove': # glove format output 
+        if kwargs['output_format'] == 'glove': # glove format output
             shutil.copyfile(entities_output,output_kgtk_file)
         elif kwargs['output_format'] == 'w2v': # w2v format output
             generate_w2v_output(entities_output,output_kgtk_file,kwargs)
 
-        else: # write to the kgtk output format tsv 
+        else: # write to the kgtk output format tsv
             generate_kgtk_output(entities_output,output_kgtk_file,verbose,very_verbose)
 
         logging.info(f'Embeddings has been generated in {output_kgtk_file}.')
 
         # ************************************************
-        # 5. Garbage collection  
+        # 5. Garbage collection
         # ************************************************
         if kwargs['retain_temporary_data'] == False:
             shutil.rmtree(kwargs['temporary_directory'])
             # tmp_tsv_path.unlink() # delete temporay tsv file
-            # shutil.rmtree(tmp_output_folder) # deleter temporay output folder   
+            # shutil.rmtree(tmp_output_folder) # deleter temporay output folder
 
         if kwargs["log_file_path"] != None:
             print('Processed Finished.')
@@ -475,5 +524,5 @@ def run(verbose: bool = False,
             print(f"Process Finished.\nOutput has been saved in {kwargs['output_file_path']}")
 
     except Exception as e:
+        print(e)
         raise KGTKException(str(e))
-            
