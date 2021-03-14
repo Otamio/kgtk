@@ -476,10 +476,7 @@ def run(verbose: bool = False,
             from torchbiggraph.eval import do_eval
 
             if str(kwargs['test_file_path']) != '-':
-                relations = [attr.evolve(r, all_negs=True) for r in config.relations]
-                test_config = attr.evolve(
-                        config, edge_paths=[edges[1]], relations=relations, num_uniform_negs=0
-                        )
+                test_config = attr.evolve(config, edge_paths=[edges[1]])
                 logging.info('Evaluate test results...')
                 do_eval(test_config)
 
